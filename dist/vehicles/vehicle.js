@@ -6,6 +6,7 @@ class Vehicle {
     constructor(vehicleConfig, controller) {
         this.vehicleConfig = vehicleConfig;
         this.controller = controller;
+        this._fullStatus = null;
         this._status = null;
         this._location = null;
         this._odometer = null;

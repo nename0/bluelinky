@@ -15,7 +15,7 @@ class AmericanVehicle extends vehicle_1.Vehicle {
         this.vehicleConfig = vehicleConfig;
         this.controller = controller;
         this.region = constants_1.REGIONS.US;
-        logger_1.default.debug(`US Vehicle ${this.vehicleConfig.id} created`);
+        logger_1.default.debug(`US Vehicle ${this.vehicleConfig.regId} created`);
     }
     getDefaultHeaders() {
         return {
@@ -37,13 +37,16 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             'offset': '-5',
         };
     }
+    fullStatus() {
+        throw new Error('Method not implemented.');
+    }
     async odometer() {
         const response = await this._request(`/ac/v2/enrollment/details/${this.userConfig.username}`, {
             method: 'GET',
             headers: { ...this.getDefaultHeaders() },
         });
         if (response.statusCode !== 200) {
-            return Promise.reject('Failed to get odometer reading!');
+            throw 'Failed to get odometer reading!';
         }
         const data = JSON.parse(response.body);
         const foundVehicle = data.enrolledVehicleDetails.find(item => {
@@ -53,7 +56,7 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             value: foundVehicle.vehicleDetails.odometer,
             unit: 0,
         };
-        return Promise.resolve(this._odometer);
+        return this._odometer;
     }
     /**
      * This is seems to always poll the modem directly, no caching
@@ -64,10 +67,10 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             headers: { ...this.getDefaultHeaders() },
         });
         if (response.statusCode !== 200) {
-            return Promise.reject('Failed to get location!');
+            throw 'Failed to get location!';
         }
         const data = JSON.parse(response.body);
-        return Promise.resolve({
+        return {
             latitude: data.coord.lat,
             longitude: data.coord.lon,
             altitude: data.coord.alt,
@@ -76,7 +79,7 @@ class AmericanVehicle extends vehicle_1.Vehicle {
                 value: data.speed.value,
             },
             heading: data.head,
-        });
+        };
     }
     async start(startConfig) {
         const mergedConfig = {
@@ -113,12 +116,12 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             json: true,
         });
         if (response.statusCode === 200) {
-            return Promise.resolve('Vehicle started!');
+            return 'Vehicle started!';
         }
-        return Promise.reject('Failed to start vehicle');
+        return 'Failed to start vehicle';
     }
     async stop() {
-        const response = await this._request(`${america_1.BASE_URL}/ac/v2/rcs/rsc/stop`, {
+        const response = await this._request('/ac/v2/rcs/rsc/stop', {
             method: 'POST',
             headers: {
                 ...this.getDefaultHeaders(),
@@ -126,9 +129,9 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             },
         });
         if (response.statusCode === 200) {
-            return Promise.resolve('Vehicle stopped');
+            return 'Vehicle stopped';
         }
-        return Promise.reject('Failed to stop vehicle!');
+        throw 'Failed to stop vehicle!';
     }
     async status(input) {
         const statusConfig = {
@@ -145,42 +148,43 @@ class AmericanVehicle extends vehicle_1.Vehicle {
         const { vehicleStatus } = JSON.parse(response.body);
         const parsedStatus = {
             chassis: {
-                hoodOpen: vehicleStatus.hoodOpen,
-                trunkOpen: vehicleStatus.trunkOpen,
-                locked: vehicleStatus.doorLock,
+                hoodOpen: vehicleStatus?.hoodOpen,
+                trunkOpen: vehicleStatus?.trunkOpen,
+                locked: vehicleStatus?.doorLock,
                 openDoors: {
-                    frontRight: !!vehicleStatus.doorOpen.frontRight,
-                    frontLeft: !!vehicleStatus.doorOpen.frontLeft,
-                    backLeft: !!vehicleStatus.doorOpen.backLeft,
-                    backRight: !!vehicleStatus.doorOpen.backRight,
+                    frontRight: !!vehicleStatus?.doorOpen?.frontRight,
+                    frontLeft: !!vehicleStatus?.doorOpen?.frontLeft,
+                    backLeft: !!vehicleStatus?.doorOpen?.backLeft,
+                    backRight: !!vehicleStatus?.doorOpen?.backRight,
                 },
                 tirePressureWarningLamp: {
-                    rearLeft: !!vehicleStatus.tirePressureLamp.tirePressureWarningLampRearLeft,
-                    frontLeft: !!vehicleStatus.tirePressureLamp.tirePressureWarningLampFrontLeft,
-                    frontRight: !!vehicleStatus.tirePressureLamp.tirePressureWarningLampFrontRight,
-                    rearRight: !!vehicleStatus.tirePressureLamp.tirePressureWarningLampRearRight,
-                    all: !!vehicleStatus.tirePressureLamp.tirePressureWarningLampAll,
+                    rearLeft: !!vehicleStatus?.tirePressureLamp?.tirePressureWarningLampRearLeft,
+                    frontLeft: !!vehicleStatus?.tirePressureLamp?.tirePressureWarningLampFrontLeft,
+                    frontRight: !!vehicleStatus?.tirePressureLamp?.tirePressureWarningLampFrontRight,
+                    rearRight: !!vehicleStatus?.tirePressureLamp?.tirePressureWarningLampRearRight,
+                    all: !!vehicleStatus?.tirePressureLamp?.tirePressureWarningLampAll,
                 },
             },
             climate: {
-                active: vehicleStatus.airCtrlOn,
-                steeringwheelHeat: !!vehicleStatus.steerWheelHeat,
+                active: vehicleStatus?.airCtrlOn,
+                steeringwheelHeat: !!vehicleStatus?.steerWheelHeat,
                 sideMirrorHeat: false,
-                rearWindowHeat: !!vehicleStatus.sideBackWindowHeat,
-                defrost: vehicleStatus.defrost,
-                temperatureSetpoint: vehicleStatus.airTemp.value,
-                temperatureUnit: vehicleStatus.airTemp.unit,
+                rearWindowHeat: !!vehicleStatus?.sideBackWindowHeat,
+                defrost: vehicleStatus?.defrost,
+                temperatureSetpoint: vehicleStatus?.airTemp?.value,
+                temperatureUnit: vehicleStatus?.airTemp?.unit,
             },
             engine: {
-                ignition: vehicleStatus.engine,
-                adaptiveCruiseControl: vehicleStatus.acc,
-                range: vehicleStatus.dte.value,
+                ignition: vehicleStatus?.engine,
+                adaptiveCruiseControl: vehicleStatus?.acc,
+                range: vehicleStatus?.dte?.value,
                 charging: vehicleStatus?.evStatus?.batteryCharge,
-                batteryCharge: vehicleStatus?.battery?.batSoc,
+                batteryCharge12v: vehicleStatus?.battery?.batSoc,
+                batteryChargeHV: vehicleStatus?.evStatus?.batteryStatus,
             },
         };
-        this._status = input.parsed ? parsedStatus : vehicleStatus;
-        return Promise.resolve(this._status);
+        this._status = statusConfig.parsed ? parsedStatus : vehicleStatus;
+        return this._status;
     }
     async unlock() {
         const formData = new url_1.URLSearchParams();
@@ -192,9 +196,9 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             body: formData.toString(),
         });
         if (response.statusCode === 200) {
-            return Promise.resolve('Unlock successful');
+            return 'Unlock successful';
         }
-        return Promise.reject('Something went wrong!');
+        return 'Something went wrong!';
     }
     async lock() {
         const formData = new url_1.URLSearchParams();
@@ -206,26 +210,42 @@ class AmericanVehicle extends vehicle_1.Vehicle {
             body: formData.toString(),
         });
         if (response.statusCode === 200) {
-            return Promise.resolve('Lock successful');
+            return 'Lock successful';
         }
-        return Promise.reject('Something went wrong!');
+        return 'Something went wrong!';
+    }
+    async startCharge() {
+        const response = await this._request(`/api/v2/spa/vehicles/${this.vehicleConfig.id}/control/charge`, {
+            method: 'POST',
+        });
+        if (response.statusCode === 200) {
+            logger_1.default.debug(`Send start charge command to Vehicle ${this.vehicleConfig.id}`);
+            return 'Start charge successful';
+        }
+        throw 'Something went wrong!';
+    }
+    async stopCharge() {
+        const response = await got_1.default(`/api/v2/spa/vehicles/${this.vehicleConfig.id}/control/charge`, {
+            method: 'POST',
+        });
+        if (response.statusCode === 200) {
+            logger_1.default.debug(`Send stop charge command to vehicle ${this.vehicleConfig.id}`);
+            return 'Stop charge successful';
+        }
+        throw 'Something went wrong!';
     }
     // TODO: not sure how to type a dynamic response
     /* eslint-disable @typescript-eslint/no-explicit-any */
     async _request(service, options) {
-        const currentTime = Math.floor(+new Date() / 1000);
-        const tokenDelta = -(currentTime - this.controller.session.tokenExpiresAt);
-        // token will epxire in 60 seconds, let's refresh it before that
-        if (tokenDelta <= 60) {
-            logger_1.default.debug("Token is expiring soon, let's get a new one");
-            await this.controller.refreshAccessToken();
+        // add logic for token refresh if to ensure we don't use a stale token
+        await this.controller.refreshAccessToken();
+        // if we refreshed token make sure to apply it to the request
+        options.headers.access_token = this.controller.session.accessToken;
+        const response = await got_1.default(`${america_1.BASE_URL}/${service}`, { throwHttpErrors: false, ...options });
+        if (response?.body) {
+            logger_1.default.debug(response.body);
         }
-        else {
-            logger_1.default.debug('Token is all good, moving on!');
-        }
-        const response = await got_1.default(`${america_1.BASE_URL}/${service}`, options);
-        logger_1.default.debug(response.body);
-        return Promise.resolve(response);
+        return response;
     }
 }
 exports.default = AmericanVehicle;

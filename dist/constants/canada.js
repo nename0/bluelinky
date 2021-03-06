@@ -9,10 +9,6 @@ exports.CLIENT_ORIGIN = 'SPA';
 exports.CA_ENDPOINTS = {
     login: `${exports.CA_BASE_URL}/tods/api/lgn`,
     logout: `${exports.CA_BASE_URL}/tods/api/lgout`,
-    // Account
-    myAccount: `${exports.CA_BASE_URL}/tods/api/acctinfo`,
-    nextService: `${exports.CA_BASE_URL}/tods/api/nxtsvc`,
-    preferedDealer: `${exports.CA_BASE_URL}/tods/api/gtprfrdlr`,
     // Vehicle
     vehicleList: `${exports.CA_BASE_URL}/tods/api/vhcllst`,
     vehicleInfo: `${exports.CA_BASE_URL}/tods/api/sltvhcl`,

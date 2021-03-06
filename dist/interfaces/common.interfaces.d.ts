@@ -20,6 +20,12 @@ export interface Session {
     tokenExpiresAt: number;
     controlTokenExpiresAt?: number;
 }
+export declare enum EVPlugTypes {
+    UNPLUGED = 0,
+    FAST = 1,
+    PORTABLE = 2,
+    STATION = 3
+}
 export interface VehicleStatus {
     engine: {
         ignition: boolean;
@@ -27,6 +33,15 @@ export interface VehicleStatus {
         charging?: boolean;
         timeToFullCharge?: unknown;
         range: number;
+        rangeGas?: number;
+        rangeEV?: number;
+        plugedTo?: EVPlugTypes;
+        estimatedCurrentChargeDuration?: number;
+        estimatedFastChargeDuration?: number;
+        estimatedPortableChargeDuration?: number;
+        estimatedStationChargeDuration?: number;
+        batteryCharge12v?: number;
+        batteryChargeHV?: number;
         adaptiveCruiseControl: boolean;
     };
     climate: {
@@ -54,6 +69,106 @@ export interface VehicleStatus {
             frontRight: boolean;
             rearRight: boolean;
             all: boolean;
+        };
+    };
+}
+export interface FullVehicleStatus {
+    vehicleLocation: {
+        coord: {
+            lat: number;
+            lon: number;
+            alt: number;
+            type: number;
+        };
+        head: number;
+        speed: {
+            value: number;
+            unit: number;
+        };
+        accuracy: {
+            hdop: number;
+            pdop: number;
+        };
+        time: string;
+    };
+    odometer: {
+        value: number;
+        unit: number;
+    };
+    vehicleStatus: {
+        time: string;
+        airCtrlOn: boolean;
+        engine: boolean;
+        doorLock: boolean;
+        doorOpen: {
+            frontRight: number;
+            frontLeft: number;
+            backLeft: number;
+            backRight: number;
+        };
+        trunkOpen: boolean;
+        airTemp: {
+            unit: number;
+            hvacTempType: number;
+            value: string;
+        };
+        defrost: boolean;
+        acc: boolean;
+        ign3: boolean;
+        hoodOpen: boolean;
+        transCond: boolean;
+        steerWheelHeat: number;
+        sideBackWindowHeat: number;
+        tirePressureLamp: {
+            tirePressureWarningLampAll: number;
+            tirePressureWarningLampFL: number;
+            tirePressureWarningLampFR: number;
+            tirePressureWarningLampRL: number;
+            tirePressureWarningLampRR: number;
+        };
+        battery: {
+            batSoc: number;
+            batState: number;
+        };
+        evStatus: {
+            batteryCharge: boolean;
+            batteryStatus: number;
+            batteryPlugin: number;
+            remainTime2: {
+                etc1: {
+                    value: number;
+                    unit: number;
+                };
+                etc2: {
+                    value: number;
+                    unit: number;
+                };
+                etc3: {
+                    value: number;
+                    unit: number;
+                };
+                atc: {
+                    value: number;
+                    unit: number;
+                };
+            };
+            drvDistance: [{
+                rangeByFuel: {
+                    gasModeRange: {
+                        value: number;
+                        unit: number;
+                    };
+                    evModeRange: {
+                        value: number;
+                        unit: number;
+                    };
+                    totalAvailableRange: {
+                        value: number;
+                        unit: number;
+                    };
+                };
+                type: number;
+            }];
         };
     };
 }
@@ -179,16 +294,6 @@ export interface VehicleInfo {
     transmissionType: string;
     vin: string;
 }
-export interface VehicleFeatures {
-    seatHeatVent: {
-        drvSeatHeatOption: number;
-        astSeatHeatOption: number;
-        rlSeatHeatOption: number;
-        rrSeatHeatOption: number;
-    };
-    hvacTempType: number;
-    targetMinSoc: number;
-}
 export interface VehicleFeatureEntry {
     category: string;
     features: [{
@@ -198,15 +303,6 @@ export interface VehicleFeatureEntry {
             subFeatureValue: string;
         }];
     }];
-}
-export interface VehicleFeaturesModel {
-    features: [VehicleFeatureEntry];
-}
-export interface VehicleInfoResponse {
-    vehicleInfo: VehicleInfo;
-    features: VehicleFeatures;
-    featuresModel: VehicleFeaturesModel;
-    status: VehicleStatus;
 }
 export interface VehicleLocation {
     latitude: number;
@@ -218,24 +314,6 @@ export interface VehicleLocation {
     };
     heading: number;
 }
-export interface LegacyVehicleLocation {
-    accuracy: {
-        hdop: number;
-        pdop: number;
-    };
-    coord: {
-        alt: number;
-        lat: number;
-        lon: number;
-        type: number;
-    };
-    head: number;
-    speed: {
-        unit: number;
-        value: number;
-    };
-    time: string;
-}
 export interface VehicleOdometer {
     unit: number;
     value: number;
@@ -243,19 +321,6 @@ export interface VehicleOdometer {
 export interface VehicleStatusOptions {
     refresh: boolean;
     parsed: boolean;
-}
-export interface VehicleNextService {
-    msopServiceOdometer: number;
-    msopServiceOdometerUnit: number;
-    mtspServiceDate: string;
-    imatServiceOdometer: number;
-    imatServiceOdometerUnit: number;
-    mtitServiceDate: string;
-    currentOdometer: number;
-    currentOdometerUnit: number;
-    serviceOdometerDuration: number;
-    serviceDaysDuration: number;
-    serviceMonthsThreshold: number;
 }
 export interface VehicleCommandResponse {
     responseCode: number;
@@ -283,55 +348,4 @@ export interface VehicleRegisterOptions {
     regId: string;
     id: string;
     generation: string;
-}
-export interface Address {
-    street: string;
-    city: string;
-    province: string;
-    postalCode: string;
-}
-export interface AccountInfo {
-    firstName: string;
-    lastName: string;
-    notificationEmail: string;
-    phones: {
-        primary: string | null;
-        secondary: string | null;
-    };
-    addresses: {
-        primary: Address | null;
-        secondary: Address | null;
-    };
-    preference: {
-        odometerUnit: number;
-        climateUnit: string;
-        languageId: number;
-        maintenanceAlert: boolean;
-        preferredDealer: PreferedDealer | null;
-        promotionMessage: string | null;
-    };
-}
-export interface PreferedDealerHour {
-    dayCode: number;
-    startTime: string;
-    startTimeUnit: string;
-    endTime: string;
-    endTimeUnit: string;
-}
-export interface PreferedDealer {
-    dealerCode: string;
-    dealerName: string;
-    street: string;
-    province: string;
-    city: string;
-    postalCode: string;
-    tel: string;
-    fax: string;
-    fullAddress: string;
-    distance: string;
-    lat: string;
-    lng: string;
-    webSite: string;
-    salesHourList: [PreferedDealerHour];
-    serviceHourList: [PreferedDealerHour];
 }

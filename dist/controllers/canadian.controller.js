@@ -12,23 +12,22 @@ const logger_1 = __importDefault(require("../logger"));
 class CanadianController extends controller_1.SessionController {
     constructor(userConfig) {
         super(userConfig);
-        this._preferredDealer = null;
-        this._accountInfo = null;
         this.vehicles = [];
         this.timeOffset = -(new Date().getTimezoneOffset() / 60);
         logger_1.default.debug('CA Controller created');
     }
     async refreshAccessToken() {
-        const shouldRefreshToken = Math.floor(+new Date() / 1000 - this.session.tokenExpiresAt) <= 10;
+        const shouldRefreshToken = Math.floor(Date.now() / 1000 - this.session.tokenExpiresAt) >= -10;
+        logger_1.default.debug('shouldRefreshToken: ' + shouldRefreshToken.toString());
         if (this.session.refreshToken && shouldRefreshToken) {
-            // TODO , right call ?
-            const response = await this.request(canada_1.CA_ENDPOINTS.verifyToken, {}, {});
-            this.session.accessToken = response.body.access_token;
-            this.session.refreshToken = response.body.refresh_token;
-            this.session.tokenExpiresAt = Math.floor(+new Date() / 1000 + response.body.expires_in);
-            return Promise.resolve('Token refreshed');
+            // TODO: someone should find the refresh token API url then we dont have to do this hack
+            // the previously used CA_ENDPOINTS.verifyToken did not refresh it only provided if the token was valid
+            await this.login();
+            logger_1.default.debug('Token refreshed');
+            return 'Token refreshed';
         }
-        return Promise.resolve('Token not expired, no need to refresh');
+        logger_1.default.debug('Token not expired, no need to refresh');
+        return 'Token not expired, no need to refresh';
     }
     async login() {
         logger_1.default.info('Begin login request');
@@ -37,17 +36,18 @@ class CanadianController extends controller_1.SessionController {
                 loginId: this.userConfig.username,
                 password: this.userConfig.password,
             });
+            logger_1.default.debug(response.result);
             this.session.accessToken = response.result.accessToken;
             this.session.refreshToken = response.result.refreshToken;
             this.session.tokenExpiresAt = Math.floor(+new Date() / 1000 + response.result.expireIn);
-            return Promise.resolve('login good');
+            return 'login good';
         }
         catch (err) {
-            return Promise.reject('error: ' + err);
+            return 'error: ' + err;
         }
     }
-    logout() {
-        return Promise.resolve('OK');
+    async logout() {
+        return 'OK';
     }
     async getVehicles() {
         logger_1.default.info('Begin getVehicleList request');
@@ -56,7 +56,7 @@ class CanadianController extends controller_1.SessionController {
             const data = response.result;
             if (data.vehicles === undefined) {
                 this.vehicles = [];
-                return Promise.resolve(this.vehicles);
+                return this.vehicles;
             }
             data.vehicles.forEach(vehicle => {
                 const vehicleConfig = {
@@ -66,40 +66,16 @@ class CanadianController extends controller_1.SessionController {
                     regDate: vehicle.enrollmentDate,
                     brandIndicator: vehicle.brandIndicator,
                     regId: vehicle.regid,
+                    id: vehicle.vehicleId,
                     generation: vehicle.genType,
                 };
                 this.vehicles.push(new canadian_vehicle_1.default(vehicleConfig, this));
             });
-            return Promise.resolve(this.vehicles);
+            return this.vehicles;
         }
         catch (err) {
-            return Promise.reject('error: ' + err);
-        }
-    }
-    //////////////////////////////////////////////////////////////////////////////
-    // Account
-    //////////////////////////////////////////////////////////////////////////////
-    // TODO: deprecated account specific data
-    async myAccount() {
-        logger_1.default.info('Begin myAccount request');
-        try {
-            const response = await this.request(canada_1.CA_ENDPOINTS.myAccount, {});
-            this._accountInfo = response.result;
-            return Promise.resolve(this._accountInfo);
-        }
-        catch (err) {
-            return Promise.reject('error: ' + err);
-        }
-    }
-    async preferedDealer() {
-        logger_1.default.info('Begin preferedDealer request');
-        try {
-            const response = await this.request(canada_1.CA_ENDPOINTS.preferedDealer, {});
-            this._preferredDealer = response.result;
-            return Promise.resolve(this._preferredDealer);
-        }
-        catch (err) {
-            return Promise.reject('error: ' + err);
+            logger_1.default.debug(err);
+            return this.vehicles;
         }
     }
     //////////////////////////////////////////////////////////////////////////////
@@ -125,13 +101,12 @@ class CanadianController extends controller_1.SessionController {
                 },
             });
             if (response.body.responseHeader.responseCode != 0) {
-                return Promise.reject('bad request: ' + response.body.responseHeader.responseDesc);
+                throw response.body.responseHeader.responseDesc;
             }
-            return Promise.resolve(response.body);
+            return response.body;
         }
         catch (err) {
-            logger_1.default.error(err.message);
-            return Promise.reject('error: ' + err);
+            throw err.message;
         }
     }
 }

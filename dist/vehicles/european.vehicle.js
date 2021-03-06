@@ -4,11 +4,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const constants_1 = require("../constants");
+const common_interfaces_1 = require("../interfaces/common.interfaces");
 const got_1 = __importDefault(require("got"));
 const logger_1 = __importDefault(require("../logger"));
 const vehicle_1 = require("./vehicle");
 const util_1 = require("../util");
 const europe_1 = require("../constants/europe");
+const european_tools_1 = require("../tools/european.tools");
 class EuropeanVehicle extends vehicle_1.Vehicle {
     constructor(vehicleConfig, controller) {
         super(vehicleConfig, controller);
@@ -37,18 +39,19 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                     defrost: config.defrost,
                     heating1: config.windscreenHeating ? 1 : 0,
                 },
-                tempCode: util_1.getTempCode(config.temperature),
+                tempCode: util_1.celciusToTempCode(config.temperature),
                 unit: config.unit,
             },
             headers: {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             json: true,
         });
         logger_1.default.info(`Climate started for vehicle ${this.vehicleConfig.id}`);
-        return Promise.resolve(response.body);
+        return response.body;
     }
     async stop() {
         await this.checkControlToken();
@@ -68,11 +71,12 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             json: true,
         });
         logger_1.default.info(`Climate stopped for vehicle ${this.vehicleConfig.id}`);
-        return Promise.resolve(response.body);
+        return response.body;
     }
     async lock() {
         await this.checkControlToken();
@@ -82,6 +86,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             body: {
                 action: 'close',
@@ -91,9 +96,9 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
         });
         if (response.statusCode === 200) {
             logger_1.default.debug(`Vehicle ${this.vehicleConfig.id} locked`);
-            return Promise.resolve('Lock successful');
+            return 'Lock successful';
         }
-        return Promise.reject('Something went wrong!');
+        return 'Something went wrong!';
     }
     async unlock() {
         await this.checkControlToken();
@@ -103,6 +108,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             body: {
                 action: 'open',
@@ -112,9 +118,53 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
         });
         if (response.statusCode === 200) {
             logger_1.default.debug(`Vehicle ${this.vehicleConfig.id} unlocked`);
-            return Promise.resolve('Unlock successful');
+            return 'Unlock successful';
         }
-        return Promise.reject('Something went wrong!');
+        return 'Something went wrong!';
+    }
+    async fullStatus(input) {
+        const statusConfig = {
+            ...constants_1.DEFAULT_VEHICLE_STATUS_OPTIONS,
+            ...input,
+        };
+        await this.checkControlToken();
+        const cachedResponse = await got_1.default(`${europe_1.EU_BASE_URL}/api/v2/spa/vehicles/${this.vehicleConfig.id}/status/latest`, {
+            method: 'GET',
+            headers: {
+                'Authorization': this.controller.session.controlToken,
+                'ccsp-device-id': this.controller.session.deviceId,
+                'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
+            },
+            json: true,
+        });
+        const fullStatus = cachedResponse.body.resMsg.vehicleStatusInfo;
+        if (statusConfig.refresh) {
+            const statusResponse = await got_1.default(`${europe_1.EU_BASE_URL}/api/v2/spa/vehicles/${this.vehicleConfig.id}/status`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': this.controller.session.controlToken,
+                    'ccsp-device-id': this.controller.session.deviceId,
+                    'Content-Type': 'application/json',
+                    'Stamp': await european_tools_1.getStamp(),
+                },
+                json: true,
+            });
+            fullStatus.vehicleStatus = statusResponse.body.resMsg;
+            const locationResponse = await got_1.default(`${europe_1.EU_BASE_URL}/api/v2/spa/vehicles/${this.vehicleConfig.id}/location`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': this.controller.session.controlToken,
+                    'ccsp-device-id': this.controller.session.deviceId,
+                    'Content-Type': 'application/json',
+                    'Stamp': await european_tools_1.getStamp(),
+                },
+                json: true,
+            });
+            fullStatus.vehicleLocation = locationResponse.body.resMsg.gpsDetail;
+        }
+        this._fullStatus = fullStatus;
+        return Promise.resolve(this._fullStatus);
     }
     async status(input) {
         const statusConfig = {
@@ -129,52 +179,66 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             json: true,
         });
-        let vehicleStatus;
-        if (statusConfig.refresh)
-            vehicleStatus = response.body.resMsg;
-        else
-            vehicleStatus = response.body.resMsg.vehicleStatusInfo.vehicleStatus;
+        // handles refreshing data
+        const vehicleStatus = statusConfig.refresh
+            ? response.body.resMsg
+            : response.body.resMsg.vehicleStatusInfo.vehicleStatus;
         const parsedStatus = {
             chassis: {
-                hoodOpen: vehicleStatus.hoodOpen,
-                trunkOpen: vehicleStatus.trunkOpen,
+                hoodOpen: vehicleStatus?.hoodOpen,
+                trunkOpen: vehicleStatus?.trunkOpen,
                 locked: vehicleStatus.doorLock,
                 openDoors: {
-                    frontRight: !!vehicleStatus.doorOpen.frontRight,
-                    frontLeft: !!vehicleStatus.doorOpen.frontLeft,
-                    backLeft: !!vehicleStatus.doorOpen.backLeft,
-                    backRight: !!vehicleStatus.doorOpen.backRight,
+                    frontRight: !!vehicleStatus?.doorOpen?.frontRight,
+                    frontLeft: !!vehicleStatus?.doorOpen?.frontLeft,
+                    backLeft: !!vehicleStatus?.doorOpen?.backLeft,
+                    backRight: !!vehicleStatus?.doorOpen?.backRight,
                 },
                 tirePressureWarningLamp: {
-                    rearLeft: !!vehicleStatus.tirePressureLamp.tirePressureLampRL,
-                    frontLeft: !!vehicleStatus.tirePressureLamp.tirePressureLampFL,
-                    frontRight: !!vehicleStatus.tirePressureLamp.tirePressureLampFR,
-                    rearRight: !!vehicleStatus.tirePressureLamp.tirePressureLampRR,
-                    all: !!vehicleStatus.tirePressureLamp.tirePressureWarningLampAll,
+                    rearLeft: !!vehicleStatus?.tirePressureLamp?.tirePressureLampRL,
+                    frontLeft: !!vehicleStatus?.tirePressureLamp?.tirePressureLampFL,
+                    frontRight: !!vehicleStatus?.tirePressureLamp?.tirePressureLampFR,
+                    rearRight: !!vehicleStatus?.tirePressureLamp?.tirePressureLampRR,
+                    all: !!vehicleStatus?.tirePressureLamp?.tirePressureWarningLampAll,
                 },
             },
             climate: {
-                active: vehicleStatus.airCtrlOn,
-                steeringwheelHeat: !!vehicleStatus.steerWheelHeat,
+                active: vehicleStatus?.airCtrlOn,
+                steeringwheelHeat: !!vehicleStatus?.steerWheelHeat,
                 sideMirrorHeat: false,
-                rearWindowHeat: !!vehicleStatus.sideBackWindowHeat,
-                defrost: vehicleStatus.defrost,
-                temperatureSetpoint: util_1.getTempFromCode(vehicleStatus.airTemp.value),
-                temperatureUnit: vehicleStatus.airTemp.unit,
+                rearWindowHeat: !!vehicleStatus?.sideBackWindowHeat,
+                defrost: vehicleStatus?.defrost,
+                temperatureSetpoint: util_1.tempCodeToCelsius(vehicleStatus?.airTemp?.value),
+                temperatureUnit: vehicleStatus?.airTemp?.unit,
             },
             engine: {
                 ignition: vehicleStatus.engine,
-                adaptiveCruiseControl: vehicleStatus.acc,
-                range: vehicleStatus.evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value,
+                adaptiveCruiseControl: vehicleStatus?.acc,
+                rangeGas: vehicleStatus?.evStatus?.drvDistance[0]?.rangeByFuel?.gasModeRange?.value ?? vehicleStatus?.dte?.value,
+                // EV
+                range: vehicleStatus?.evStatus?.drvDistance[0]?.rangeByFuel?.totalAvailableRange?.value,
+                rangeEV: vehicleStatus?.evStatus?.drvDistance[0]?.rangeByFuel?.evModeRange?.value,
+                plugedTo: vehicleStatus?.evStatus?.batteryPlugin ?? common_interfaces_1.EVPlugTypes.UNPLUGED,
                 charging: vehicleStatus?.evStatus?.batteryCharge,
-                batteryCharge: vehicleStatus?.battery?.batSoc,
+                estimatedCurrentChargeDuration: vehicleStatus?.evStatus?.remainTime2?.atc?.value,
+                estimatedFastChargeDuration: vehicleStatus?.evStatus?.remainTime2?.etc1?.value,
+                estimatedPortableChargeDuration: vehicleStatus?.evStatus?.remainTime2?.etc2?.value,
+                estimatedStationChargeDuration: vehicleStatus?.evStatus?.remainTime2?.etc3?.value,
+                batteryCharge12v: vehicleStatus?.battery?.batSoc,
+                batteryChargeHV: vehicleStatus?.evStatus?.batteryStatus,
             },
         };
-        this._status = input.parsed ? parsedStatus : vehicleStatus;
-        return Promise.resolve(this._status);
+        if (!parsedStatus.engine.range) {
+            if (parsedStatus.engine.rangeEV || parsedStatus.engine.rangeGas) {
+                parsedStatus.engine.range = (parsedStatus.engine.rangeEV ?? 0) + (parsedStatus.engine.rangeGas ?? 0);
+            }
+        }
+        this._status = statusConfig.parsed ? parsedStatus : vehicleStatus;
+        return this._status;
     }
     async odometer() {
         await this.checkControlToken();
@@ -184,11 +248,12 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             json: true,
         });
         this._odometer = response.body.resMsg.vehicleStatusInfo.odometer;
-        return Promise.resolve(this._odometer);
+        return this._odometer;
     }
     async location() {
         await this.checkControlToken();
@@ -198,6 +263,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             json: true,
         });
@@ -212,7 +278,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
             },
             heading: data.head,
         };
-        return Promise.resolve(this._location);
+        return this._location;
     }
     async startCharge() {
         await this.checkControlToken();
@@ -222,6 +288,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             body: {
                 action: 'start',
@@ -233,7 +300,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
             logger_1.default.debug(`Send start charge command to Vehicle ${this.vehicleConfig.id}`);
             return 'Start charge successful';
         }
-        return Promise.reject('Something went wrong!');
+        throw 'Something went wrong!';
     }
     async stopCharge() {
         await this.checkControlToken();
@@ -243,6 +310,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
                 'Authorization': this.controller.session.controlToken,
                 'ccsp-device-id': this.controller.session.deviceId,
                 'Content-Type': 'application/json',
+                'Stamp': await european_tools_1.getStamp(),
             },
             body: {
                 action: 'stop',
@@ -254,7 +322,7 @@ class EuropeanVehicle extends vehicle_1.Vehicle {
             logger_1.default.debug(`Send stop charge command to Vehicle ${this.vehicleConfig.id}`);
             return 'Stop charge successful';
         }
-        return Promise.reject('Something went wrong!');
+        throw 'Something went wrong!';
     }
 }
 exports.default = EuropeanVehicle;

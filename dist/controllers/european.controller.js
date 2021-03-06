@@ -32,6 +32,7 @@ const controller_1 = require("./controller");
 const logger_1 = __importDefault(require("../logger"));
 const url_1 = require("url");
 const tough_cookie_1 = require("tough-cookie");
+const european_tools_1 = require("../tools/european.tools");
 class EuropeanController extends controller_1.SessionController {
     constructor(userConfig) {
         super(userConfig);
@@ -44,7 +45,7 @@ class EuropeanController extends controller_1.SessionController {
             controlTokenExpiresAt: 0,
         };
         this.vehicles = [];
-        logger_1.default.debug(`EU Controller created`);
+        logger_1.default.debug('EU Controller created');
         this.session.deviceId = this.uuidv4();
     }
     uuidv4() {
@@ -56,14 +57,16 @@ class EuropeanController extends controller_1.SessionController {
     async refreshAccessToken() {
         const shouldRefreshToken = Math.floor(Date.now() / 1000 - this.session.tokenExpiresAt) >= -10;
         if (!this.session.refreshToken) {
-            return Promise.reject('Need refresh token to refresh access token. Use login()');
+            logger_1.default.debug('Need refresh token to refresh access token. Use login()');
+            return 'Need refresh token to refresh access token. Use login()';
         }
         if (!shouldRefreshToken) {
+            logger_1.default.debug('Token not expired, no need to refresh');
             return 'Token not expired, no need to refresh';
         }
         const formData = new url_1.URLSearchParams();
         formData.append('grant_type', 'refresh_token');
-        formData.append('redirect_uri', "https://www.getpostman.com/oauth2/callback"); // Oversight from Hyundai developers
+        formData.append('redirect_uri', 'https://www.getpostman.com/oauth2/callback'); // Oversight from Hyundai developers
         formData.append('refresh_token', this.session.refreshToken);
         const response = await got_1.default(constants_1.ALL_ENDPOINTS.EU.token, {
             method: 'POST',
@@ -79,16 +82,18 @@ class EuropeanController extends controller_1.SessionController {
             throwHttpErrors: false,
         });
         if (response.statusCode !== 200) {
-            return Promise.reject(`Refresh token failed: ${response.body}`);
+            logger_1.default.debug(`Refresh token failed: ${response.body}`);
+            return `Refresh token failed: ${response.body}`;
         }
         const responseBody = JSON.parse(response.body);
         this.session.accessToken = 'Bearer ' + responseBody.access_token;
         this.session.tokenExpiresAt = Math.floor(Date.now() / 1000 + responseBody.expires_in);
+        logger_1.default.debug('Token refreshed');
         return 'Token refreshed';
     }
     async enterPin() {
         if (this.session.accessToken === '') {
-            Promise.reject('Token not set');
+            throw 'Token not set';
         }
         const response = await got_1.default(`${europe_1.EU_BASE_URL}/api/v1/user/pin`, {
             method: 'PUT',
@@ -104,7 +109,7 @@ class EuropeanController extends controller_1.SessionController {
         });
         this.session.controlToken = 'Bearer ' + response.body.controlToken;
         this.session.controlTokenExpiresAt = Math.floor(Date.now() / 1000 + response.body.expiresTime);
-        return Promise.resolve('PIN entered OK, The pin is valid for 10 minutes');
+        return 'PIN entered OK, The pin is valid for 10 minutes';
     }
     async login() {
         try {
@@ -122,6 +127,7 @@ class EuropeanController extends controller_1.SessionController {
                 },
                 cookieJar,
             });
+            logger_1.default.debug(authCodeResponse.body);
             let authorizationCode;
             if (authCodeResponse) {
                 const regexMatch = /code=([^&]*)/g.exec(authCodeResponse.body.redirectUrl);
@@ -142,6 +148,7 @@ class EuropeanController extends controller_1.SessionController {
                     'Connection': 'Keep-Alive',
                     'Accept-Encoding': 'gzip',
                     'User-Agent': 'okhttp/3.10.0',
+                    'Stamp': await european_tools_1.getStamp(),
                 },
                 body: {
                     pushRegId: credentials.gcm.token,
@@ -167,13 +174,13 @@ class EuropeanController extends controller_1.SessionController {
                     'Accept-Encoding': 'gzip',
                     'User-Agent': 'okhttp/3.10.0',
                     'grant_type': 'authorization_code',
+                    'Stamp': await european_tools_1.getStamp(),
                 },
                 body: formData.toString(),
                 cookieJar,
             });
             if (response.statusCode !== 200) {
-                logger_1.default.debug(`Get token failed: ${response.body}`);
-                Promise.reject(`Get token failed: ${response.body}`);
+                throw `Get token failed: ${response.body}`;
             }
             if (response) {
                 const responseBody = JSON.parse(response.body);
@@ -181,26 +188,25 @@ class EuropeanController extends controller_1.SessionController {
                 this.session.refreshToken = responseBody.refresh_token;
                 this.session.tokenExpiresAt = Math.floor(Date.now() / 1000 + responseBody.expires_in);
             }
-            return Promise.resolve('Login success');
+            return 'Login success';
         }
         catch (err) {
-            logger_1.default.debug(err.body);
-            logger_1.default.debug(err);
-            return Promise.reject(err.message);
+            throw err.message;
         }
     }
-    logout() {
-        return Promise.resolve('OK');
+    async logout() {
+        return 'OK';
     }
     async getVehicles() {
         if (this.session.accessToken === undefined) {
-            return Promise.reject('Token not set');
+            throw 'Token not set';
         }
         const response = await got_1.default(`${europe_1.EU_BASE_URL}/api/v1/spa/vehicles`, {
             method: 'GET',
             headers: {
                 'Authorization': this.session.accessToken,
                 'ccsp-device-id': this.session.deviceId,
+                'Stamp': await european_tools_1.getStamp(),
             },
             json: true,
         });
@@ -211,6 +217,7 @@ class EuropeanController extends controller_1.SessionController {
                 headers: {
                     'Authorization': this.session.accessToken,
                     'ccsp-device-id': this.session.deviceId,
+                    'Stamp': await european_tools_1.getStamp(),
                 },
                 json: true,
             });
@@ -227,7 +234,7 @@ class EuropeanController extends controller_1.SessionController {
             this.vehicles.push(new european_vehicle_1.default(vehicleConfig, this));
             logger_1.default.debug(`Added vehicle ${vehicleConfig.id}`);
         });
-        return Promise.resolve(this.vehicles);
+        return this.vehicles;
     }
     // TODO: type this or replace it with a normal loop
     /* eslint-disable @typescript-eslint/no-explicit-any */

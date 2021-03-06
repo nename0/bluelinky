@@ -52,7 +52,6 @@ class BlueLinky extends events_1.EventEmitter {
         }
     }
     async login() {
-        logger_1.default.debug('loggin into to API');
         try {
             const response = await this.controller.login();
             // get all cars from the controller

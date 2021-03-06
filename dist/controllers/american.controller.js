@@ -13,10 +13,10 @@ class AmericanController extends controller_1.SessionController {
     constructor(userConfig) {
         super(userConfig);
         this.vehicles = [];
-        logger_1.default.debug(`US Controller created`);
+        logger_1.default.debug('US Controller created');
     }
     async refreshAccessToken() {
-        const shouldRefreshToken = Math.floor(+new Date() / 1000 - this.session.tokenExpiresAt) <= 10;
+        const shouldRefreshToken = Math.floor(Date.now() / 1000 - this.session.tokenExpiresAt) >= -10;
         if (this.session.refreshToken && shouldRefreshToken) {
             logger_1.default.debug('refreshing token');
             const response = await got_1.default(`${america_1.BASE_URL}/v2/ac/oauth/token/refresh`, {
@@ -30,16 +30,19 @@ class AmericanController extends controller_1.SessionController {
                 },
                 json: true,
             });
+            logger_1.default.debug(response.body);
             this.session.accessToken = response.body.access_token;
             this.session.refreshToken = response.body.refresh_token;
             this.session.tokenExpiresAt = Math.floor(+new Date() / 1000 + parseInt(response.body.expires_in));
-            return Promise.resolve('Token refreshed');
+            logger_1.default.debug('Token refreshed');
+            return 'Token refreshed';
         }
-        return Promise.resolve('Token not expired, no need to refresh');
+        logger_1.default.debug('Token not expired, no need to refresh');
+        return 'Token not expired, no need to refresh';
     }
     // TODO: come up with a better return value?
     async login() {
-        logger_1.default.debug('Logging in to API');
+        logger_1.default.debug('Logging in to the API');
         const response = await got_1.default(`${america_1.BASE_URL}/v2/ac/oauth/token`, {
             method: 'POST',
             body: {
@@ -52,16 +55,17 @@ class AmericanController extends controller_1.SessionController {
             },
             json: true,
         });
+        logger_1.default.debug(response.body);
         if (response.statusCode !== 200) {
-            return Promise.reject('login bad');
+            return 'login bad';
         }
         this.session.accessToken = response.body.access_token;
         this.session.refreshToken = response.body.refresh_token;
         this.session.tokenExpiresAt = Math.floor(+new Date() / 1000 + parseInt(response.body.expires_in));
-        return Promise.resolve('login good');
+        return 'login good';
     }
     async logout() {
-        return Promise.resolve('OK');
+        return 'OK';
     }
     async getVehicles() {
         const response = await got_1.default(`${america_1.BASE_URL}/ac/v2/enrollment/details/${this.userConfig.username}`, {
@@ -78,7 +82,7 @@ class AmericanController extends controller_1.SessionController {
         const data = JSON.parse(response.body);
         if (data.enrolledVehicleDetails === undefined) {
             this.vehicles = [];
-            return Promise.resolve(this.vehicles);
+            return this.vehicles;
         }
         data.enrolledVehicleDetails.forEach(vehicle => {
             const vehicleInfo = vehicle.vehicleDetails;
@@ -93,7 +97,7 @@ class AmericanController extends controller_1.SessionController {
             };
             this.vehicles.push(new american_vehicle_1.default(vehicleConfig, this));
         });
-        return Promise.resolve(this.vehicles);
+        return this.vehicles;
     }
 }
 exports.AmericanController = AmericanController;
