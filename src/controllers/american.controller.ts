@@ -12,13 +12,13 @@ import { VehicleRegisterOptions } from '../interfaces/common.interfaces';
 export class AmericanController extends SessionController {
   constructor(userConfig: BlueLinkyConfig) {
     super(userConfig);
-    logger.debug(`US Controller created`);
+    logger.debug('US Controller created');
   }
 
   private vehicles: Array<AmericanVehicle> = [];
 
   public async refreshAccessToken(): Promise<string> {
-    const shouldRefreshToken = Math.floor(+new Date() / 1000 - this.session.tokenExpiresAt) <= 10;
+    const shouldRefreshToken = Math.floor(Date.now() / 1000 - this.session.tokenExpiresAt) >= -10;
 
     if (this.session.refreshToken && shouldRefreshToken) {
       logger.debug('refreshing token');
@@ -34,21 +34,24 @@ export class AmericanController extends SessionController {
         json: true,
       });
 
+      logger.debug(response.body);
       this.session.accessToken = response.body.access_token;
       this.session.refreshToken = response.body.refresh_token;
       this.session.tokenExpiresAt = Math.floor(
         +new Date() / 1000 + parseInt(response.body.expires_in)
       );
 
-      return Promise.resolve('Token refreshed');
+      logger.debug('Token refreshed');
+      return 'Token refreshed';
     }
 
-    return Promise.resolve('Token not expired, no need to refresh');
+    logger.debug('Token not expired, no need to refresh');
+    return 'Token not expired, no need to refresh';
   }
 
   // TODO: come up with a better return value?
   public async login(): Promise<string> {
-    logger.debug('Logging in to API');
+    logger.debug('Logging in to the API');
 
     const response = await got(`${BASE_URL}/v2/ac/oauth/token`, {
       method: 'POST',
@@ -63,8 +66,10 @@ export class AmericanController extends SessionController {
       json: true,
     });
 
+    logger.debug(response.body);
+    
     if (response.statusCode !== 200) {
-      return Promise.reject('login bad');
+      return 'login bad';
     }
 
     this.session.accessToken = response.body.access_token;
@@ -73,11 +78,11 @@ export class AmericanController extends SessionController {
       +new Date() / 1000 + parseInt(response.body.expires_in)
     );
 
-    return Promise.resolve('login good');
+    return 'login good';
   }
 
   public async logout(): Promise<string> {
-    return Promise.resolve('OK');
+    return 'OK';
   }
 
   async getVehicles(): Promise<Array<Vehicle>> {
@@ -97,12 +102,11 @@ export class AmericanController extends SessionController {
 
     if (data.enrolledVehicleDetails === undefined) {
       this.vehicles = [];
-      return Promise.resolve(this.vehicles);
+      return this.vehicles;
     }
 
     data.enrolledVehicleDetails.forEach(vehicle => {
       const vehicleInfo = vehicle.vehicleDetails;
-
       const vehicleConfig = {
         nickname: vehicleInfo.nickName,
         name: vehicleInfo.nickName,
@@ -116,6 +120,6 @@ export class AmericanController extends SessionController {
       this.vehicles.push(new AmericanVehicle(vehicleConfig, this));
     });
 
-    return Promise.resolve(this.vehicles);
+    return this.vehicles;
   }
 }

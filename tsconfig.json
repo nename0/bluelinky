@@ -10,6 +10,7 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "emitDecoratorMetadata": true,
     "declarationDir": "dist",
     "outDir": "dist",
@@ -19,7 +20,7 @@
     ]
   },
   "include": [
-    "lib"
+    "src"
   ],
   "exclude": [
     "node_modules"

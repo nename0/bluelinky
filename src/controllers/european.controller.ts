@@ -12,11 +12,12 @@ import { URLSearchParams } from 'url';
 
 import { CookieJar } from 'tough-cookie';
 import { VehicleRegisterOptions } from '../interfaces/common.interfaces';
+import { getStamp } from '../tools/european.tools';
 
 export class EuropeanController extends SessionController {
   constructor(userConfig: BlueLinkyConfig) {
     super(userConfig);
-    logger.debug(`EU Controller created`);
+    logger.debug('EU Controller created');
 
     this.session.deviceId = this.uuidv4();
   }
@@ -44,46 +45,50 @@ export class EuropeanController extends SessionController {
     const shouldRefreshToken = Math.floor(Date.now() / 1000 - this.session.tokenExpiresAt) >= -10;
 
     if (!this.session.refreshToken) {
-      return Promise.reject('Need refresh token to refresh access token. Use login()');
+      logger.debug('Need refresh token to refresh access token. Use login()');
+      return 'Need refresh token to refresh access token. Use login()';
     }
 
     if (!shouldRefreshToken) {
+      logger.debug('Token not expired, no need to refresh');
       return 'Token not expired, no need to refresh';
     }
 
     const formData = new URLSearchParams();
     formData.append('grant_type', 'refresh_token');
-    formData.append('redirect_uri', "https://www.getpostman.com/oauth2/callback"); // Oversight from Hyundai developers
+    formData.append('redirect_uri', 'https://www.getpostman.com/oauth2/callback'); // Oversight from Hyundai developers
     formData.append('refresh_token', this.session.refreshToken);
 
     const response = await got(ALL_ENDPOINTS.EU.token, {
-        method: 'POST',
-        headers: {
-          'Authorization': EU_CONSTANTS.basicToken,
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Host': EU_API_HOST,
-          'Connection': 'Keep-Alive',
-          'Accept-Encoding': 'gzip',
-          'User-Agent': 'okhttp/3.10.0',
-        },
-        body: formData.toString(),
-        throwHttpErrors: false,
-      });
+      method: 'POST',
+      headers: {
+        'Authorization': EU_CONSTANTS.basicToken,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Host': EU_API_HOST,
+        'Connection': 'Keep-Alive',
+        'Accept-Encoding': 'gzip',
+        'User-Agent': 'okhttp/3.10.0',
+      },
+      body: formData.toString(),
+      throwHttpErrors: false,
+    });
 
     if (response.statusCode !== 200) {
-      return Promise.reject(`Refresh token failed: ${response.body}`);
+      logger.debug(`Refresh token failed: ${response.body}`);
+      return `Refresh token failed: ${response.body}`;
     }
 
     const responseBody = JSON.parse(response.body);
     this.session.accessToken = 'Bearer ' + responseBody.access_token;
     this.session.tokenExpiresAt = Math.floor(Date.now() / 1000 + responseBody.expires_in);
 
+    logger.debug('Token refreshed');
     return 'Token refreshed';
   }
 
   public async enterPin(): Promise<string> {
     if (this.session.accessToken === '') {
-      Promise.reject('Token not set');
+      throw 'Token not set';
     }
 
     const response = await got(`${EU_BASE_URL}/api/v1/user/pin`, {
@@ -101,7 +106,7 @@ export class EuropeanController extends SessionController {
 
     this.session.controlToken = 'Bearer ' + response.body.controlToken;
     this.session.controlTokenExpiresAt = Math.floor(Date.now() / 1000 + response.body.expiresTime);
-    return Promise.resolve('PIN entered OK, The pin is valid for 10 minutes');
+    return 'PIN entered OK, The pin is valid for 10 minutes';
   }
 
   public async login(): Promise<string> {
@@ -123,6 +128,7 @@ export class EuropeanController extends SessionController {
         cookieJar,
       });
 
+      logger.debug(authCodeResponse.body);
       let authorizationCode;
       if (authCodeResponse) {
         const regexMatch = /code=([^&]*)/g.exec(authCodeResponse.body.redirectUrl);
@@ -143,6 +149,7 @@ export class EuropeanController extends SessionController {
           'Connection': 'Keep-Alive',
           'Accept-Encoding': 'gzip',
           'User-Agent': 'okhttp/3.10.0',
+          'Stamp': await getStamp(),
         },
         body: {
           pushRegId: credentials.gcm.token,
@@ -171,14 +178,14 @@ export class EuropeanController extends SessionController {
           'Accept-Encoding': 'gzip',
           'User-Agent': 'okhttp/3.10.0',
           'grant_type': 'authorization_code',
+          'Stamp': await getStamp(),
         },
         body: formData.toString(),
         cookieJar,
-      })
+      });
 
       if (response.statusCode !== 200) {
-        logger.debug(`Get token failed: ${response.body}`);
-        Promise.reject(`Get token failed: ${response.body}`);
+        throw `Get token failed: ${response.body}`;
       }
 
       if (response) {
@@ -188,21 +195,19 @@ export class EuropeanController extends SessionController {
         this.session.tokenExpiresAt = Math.floor(Date.now() / 1000 + responseBody.expires_in);
       }
 
-      return Promise.resolve('Login success');
+      return 'Login success';
     } catch (err) {
-      logger.debug(err.body);
-      logger.debug(err);
-      return Promise.reject(err.message);
+      throw err.message;
     }
   }
 
-  public logout(): Promise<string> {
-    return Promise.resolve('OK');
+  public async logout(): Promise<string> {
+    return 'OK';
   }
 
   public async getVehicles(): Promise<Array<Vehicle>> {
     if (this.session.accessToken === undefined) {
-      return Promise.reject('Token not set');
+      throw 'Token not set';
     }
 
     const response = await got(`${EU_BASE_URL}/api/v1/spa/vehicles`, {
@@ -210,6 +215,7 @@ export class EuropeanController extends SessionController {
       headers: {
         'Authorization': this.session.accessToken,
         'ccsp-device-id': this.session.deviceId,
+        'Stamp': await getStamp(),
       },
       json: true,
     });
@@ -224,6 +230,7 @@ export class EuropeanController extends SessionController {
           headers: {
             'Authorization': this.session.accessToken,
             'ccsp-device-id': this.session.deviceId,
+            'Stamp': await getStamp(),
           },
           json: true,
         }
@@ -245,7 +252,7 @@ export class EuropeanController extends SessionController {
       logger.debug(`Added vehicle ${vehicleConfig.id}`);
     });
 
-    return Promise.resolve(this.vehicles);
+    return this.vehicles;
   }
 
   // TODO: type this or replace it with a normal loop
